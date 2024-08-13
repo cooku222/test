@@ -1,0 +1,65 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches:
+      - main
+#    paths:
+#      - 'Front/**'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: 'KHTML-dku'          # set this to your application's name
+  AZURE_WEBAPP_PACKAGE_PATH: './Front/build/web/'  # set this to the path to your JAR file (e.g., 'build/libs/')
+  JAVA_VERSION: '21'                        # set this to the Java version to use
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.3'
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: ./Front
+
+      - name: Build Flutter web
+        run: flutter build web
+        working-directory: ./Front
+
+      - name: Modify index.html
+        run: sed -i 's/src="flutter_bootstrap.js"/src="main.dart"/g' ./Front/build/web/index.html
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v3
+        with:
+          name: flutter-web-app
+          path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v2
+        with:
+          name: flutter-web-app
+          path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      - name: Check index.html content
+        run: cat ./Front/build/web/index.html
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
